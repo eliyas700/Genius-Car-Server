@@ -2,11 +2,30 @@ const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const cors = require("cors");
+var jwt = require("jsonwebtoken");
+const { decode } = require("jsonwebtoken");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 //Middleware
 app.use(cors());
 app.use(express.json());
+
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  console.log("insideJWT", authHeader);
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized Access" });
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.MY_SECRET_KEY, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden Access" });
+    }
+    console.log("decoded", decoded);
+    req.decoded = decoded;
+    next();
+  });
+}
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mxlhj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, {
@@ -58,13 +77,26 @@ async function run() {
     });
 
     //Get All the Orders
-    app.get("/order", async (req, res) => {
+    app.get("/order", verifyJWT, async (req, res) => {
+      const decodedEmail = req.decoded.email;
       const email = req.query.email;
       console.log(email);
-      const query = { email: email };
-      const cursor = orderCollection.find(query);
-      const orders = await cursor.toArray();
-      res.send(orders);
+      if (decodedEmail === email) {
+        const query = { email: email };
+        const cursor = orderCollection.find(query);
+        const orders = await cursor.toArray();
+        res.send(orders);
+      } else {
+        res.status(403).send({ message: "forbidden Access Bro!" });
+      }
+    });
+    //Get JWT
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const accessToken = jwt.sign(user, process.env.MY_SECRET_KEY, {
+        expiresIn: "1d",
+      });
+      res.send({ accessToken });
     });
   } finally {
   }
